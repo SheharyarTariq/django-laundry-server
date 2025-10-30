@@ -6,8 +6,8 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = get_user_model()  # Custom User model
-        fields = ['id', 'full_name', 'phone_number', 'email', 'password']
-        extra_kwargs = {'password': {'write_only': True}}
+        fields = ['id', 'full_name', 'phone_number', 'email', 'password', 'role']
+        extra_kwargs = {'password': {'write_only': True}, 'role': {'read_only': True}}
 
     # Field-level validation for 'full_name'
     def validate_full_name(self, value):
@@ -54,4 +54,4 @@ class RegistrationSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
-        fields = ('id', 'email', 'full_name', 'phone_number')
+        fields = ('id', 'email', 'full_name', 'phone_number', 'role')

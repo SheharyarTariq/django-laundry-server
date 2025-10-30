@@ -6,6 +6,11 @@ from rest_framework.response import Response
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from rest_framework import serializers
+from drf_yasg.utils import swagger_auto_schema
 
 class RegistrationView(generics.CreateAPIView):
     serializer_class = RegistrationSerializer
@@ -39,3 +44,23 @@ class LoginView(TokenObtainPairView):
             'access': str(access_token),
             'user': UserSerializer(user).data,
         })
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+class LogoutView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    @swagger_auto_schema(request_body=LogoutSerializer)
+    def post(self, request):
+        serializer = LogoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        refresh_token = serializer.validated_data['refresh']
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({'detail': 'Logout successful.'}, status=200)
+        except TokenError:
+            return Response({'detail': 'Invalid token.'}, status=400)
+        except Exception as e:
+            return Response({'detail': str(e)}, status=400)

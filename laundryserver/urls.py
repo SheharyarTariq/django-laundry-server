@@ -19,6 +19,7 @@ from django.urls import path, include
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
+from drf_yasg.generators import OpenAPISchemaGenerator
 
 # Swagger schema view setup
 schema_view = get_schema_view(
@@ -31,11 +32,29 @@ schema_view = get_schema_view(
       license=openapi.License(name="BSD License"),
    ),
    public=True,
-   permission_classes=[permissions.AllowAny],
+   permission_classes=(permissions.AllowAny,),
+   authentication_classes=(),
 )
+
+# Add security definitions for JWT Bearer auth
+class CustomSchemaGenerator(OpenAPISchemaGenerator):
+    def get_schema(self, request=None, public=False):
+        schema = super().get_schema(request, public)
+        schema['securityDefinitions'] = {
+            'Bearer': {
+                'type': 'apiKey',
+                'name': 'Authorization',
+                'in': 'header',
+                'description': 'JWT Authorization header using the Bearer scheme. Example: "Authorization: Bearer {token}"',
+            }
+        }
+        schema['security'] = [{"Bearer": []}]
+        return schema
+
+schema_view.generator_class = CustomSchemaGenerator
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('users.urls')),
-
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='swagger-ui'),
 ]
