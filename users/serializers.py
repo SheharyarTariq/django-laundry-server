@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from utils import send_verification_email
 
 class RegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -47,11 +48,24 @@ class RegistrationSerializer(serializers.ModelSerializer):
             full_name=validated_data['full_name'],
             phone_number=validated_data.get('phone_number'),
             email=validated_data['email'],
-            password=validated_data['password']
+            password=validated_data['password'],
+            is_active=False  # Add this - user inactive until verified
         )
+        
+        # Generate token and send email
+        user.generate_verification_token()
+        send_verification_email(user)
+        
         return user
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
-        fields = ('id', 'email', 'full_name', 'phone_number', 'role')
+        fields = ('id', 'email', 'full_name', 'phone_number', 'role', 'is_email_verified')
+
+class VerifyEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.CharField()
+
+class ResendVerificationSerializer(serializers.Serializer):
+    email = serializers.EmailField()
