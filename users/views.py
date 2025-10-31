@@ -1,5 +1,5 @@
 from rest_framework import generics
-from .serializers import RegistrationSerializer, UserSerializer, VerifyEmailSerializer, ResendVerificationSerializer
+from .serializers import ForgotPasswordSerializer, RegistrationSerializer, ResetPasswordSerializer, UpdateProfileSerializer, UserSerializer, VerifyEmailSerializer, ResendVerificationSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from rest_framework import serializers
 from drf_yasg.utils import swagger_auto_schema
-from utils import send_verification_email
+from utils import send_password_reset_email, send_verification_email
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -33,6 +33,37 @@ class RegistrationView(generics.CreateAPIView):
             'user': UserSerializer(user).data,
         }, status=status.HTTP_201_CREATED)
 
+class GetProfileView(APIView):
+    """Get current user profile"""
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(tags=["Profile"])
+    def get(self, request):
+        user = request.user
+        return Response({
+            'user': UserSerializer(user).data
+        }, status=status.HTTP_200_OK)
+
+class UpdateProfileView(APIView):
+    """Update user profile including address"""
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        request_body=UpdateProfileSerializer,
+        tags=["Profile"]
+    )
+    def patch(self, request):
+        user = request.user
+        serializer = UpdateProfileSerializer(user, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Profile updated successfully.',
+                'user': UserSerializer(user).data
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class VerifyEmailView(APIView):
     """Verify email with the code sent to user"""
@@ -64,15 +95,21 @@ class VerifyEmailView(APIView):
             user.is_active = True
             user.email_verification_token = None
             user.save()
-            
+        
+                # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            access_token = refresh.access_token
+
             return Response({
-                'message': 'Email verified successfully! You can now login.'
+                'message': 'Email verified successfully! You can now login.',
+                'refresh': str(refresh),
+                'access': str(access_token),
+                'user': UserSerializer(user).data,
             }, status=status.HTTP_200_OK)
         else:
             return Response({
                 'error': 'Invalid verification code.'
             }, status=status.HTTP_400_BAD_REQUEST)
-
 
 class ResendVerificationCodeView(APIView):
     """Resend verification code to user's email"""
@@ -143,6 +180,85 @@ class CustomTokenRefreshView(TokenRefreshView):
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
 
+class ForgotPasswordView(APIView):
+    """Request password reset code"""
+    permission_classes = [AllowAny]
+    
+    @swagger_auto_schema(request_body=ForgotPasswordSerializer, tags=["Password Reset"])
+    def post(self, request):
+        email = request.data.get('email')
+        
+        if not email:
+            return Response({
+                'error': 'Email is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = User.objects.get(email=email)
+            
+            # Only allow password reset for verified users
+            if not user.is_email_verified:
+                return Response({
+                    'error': 'Please verify your email first before resetting password.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Generate and send password reset token
+            user.generate_password_reset_token()
+            send_password_reset_email(user)
+            
+            return Response({
+                'message': 'Password reset code sent to your email.'
+            }, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            # For security, don't reveal if email exists or not
+            return Response({
+                'message': 'If the email exists, a password reset code has been sent.'
+            }, status=status.HTTP_200_OK)
+
+class ResetPasswordView(APIView):
+    """Verify code and reset password"""
+    permission_classes = [AllowAny]
+    
+    @swagger_auto_schema(request_body=ResetPasswordSerializer, tags=["Password Reset"])
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        email = serializer.validated_data['email']
+        code = serializer.validated_data['code']
+        new_password = serializer.validated_data['password']
+        
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({
+                'error': 'User not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if password reset token is set
+        if not user.password_reset_token:
+            return Response({
+                'error': 'No password reset request found. Please request a new code.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify the code
+        if user.password_reset_token == code:
+            # Reset password
+            user.set_password(new_password)
+            user.password_reset_token = None  # Clear the token
+            user.save()
+            
+            return Response({
+                'message': 'Password reset successful! You can now login with your new password.'
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': 'Invalid verification code.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
 class LogoutView(APIView):
     permission_classes = (IsAuthenticated,)
 

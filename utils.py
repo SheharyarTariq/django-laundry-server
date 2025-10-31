@@ -33,3 +33,16 @@ Laundry Server
     except Exception as e:
         print(f"Error sending email: {e}")
         return False
+    
+
+def send_password_reset_email(user):
+    """Send password reset code"""
+    subject = 'Password Reset Code'
+    message = f'Your password reset code is: {user.password_reset_token}\n\nIf you did not request this, please ignore this email.'
+    send_mail(
+        subject,
+        message,
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+        fail_silently=False,
+    )

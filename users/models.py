@@ -15,7 +15,17 @@ class User(AbstractUser):
     # Add these new fields for email verification
     is_email_verified = models.BooleanField(default=False)
     email_verification_token = models.CharField(max_length=100, blank=True, null=True)
+
+    # Password reset field
+    password_reset_token = models.CharField(max_length=100, blank=True, null=True)
     
+    # Address fields
+    address_line_1 = models.CharField(max_length=255, blank=True, null=True)
+    address_line_2 = models.CharField(max_length=255, blank=True, null=True)
+    city = models.CharField(max_length=100, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
+    postcode = models.CharField(max_length=20, blank=True, null=True)
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['full_name', 'phone_number']
     
@@ -24,3 +34,9 @@ class User(AbstractUser):
         self.email_verification_token = ''.join([str(secrets.randbelow(10)) for _ in range(4)])
         self.save()
         return self.email_verification_token
+    
+    def generate_password_reset_token(self):
+        """Generate a 4-digit verification code for password reset"""
+        self.password_reset_token = ''.join([str(secrets.randbelow(10)) for _ in range(4)])
+        self.save()
+        return self.password_reset_token
