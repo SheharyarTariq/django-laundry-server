@@ -45,7 +45,8 @@ INSTALLED_APPS = [
     'drf_yasg', 
     'rest_framework',
     'rest_framework_simplejwt',
-    'areas'
+    'areas',
+    'categories'
 ]
 
 # REST Framework JWT Settings
@@ -57,7 +58,7 @@ REST_FRAMEWORK = {
 
 # SimpleJWT settings (optional, to modify token expiration time, etc.)
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),  # Expiry time for access token
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),  # Expiry time for access token
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),  # Expiry time for refresh token
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,

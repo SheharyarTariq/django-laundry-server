@@ -1,17 +1,13 @@
-from django.db import IntegrityError
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
+from django.db import IntegrityError
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from .models import Area, Postcode, TimeSlot
-from .serializers import (
-    AreaSerializer, AreaListSerializer, AreaDetailSerializer,
-    PostcodeSerializer, PostcodeListSerializer, TimeSlotBulkCreateSerializer, TimeSlotSerializer
-)
-
+from .serializers import ( AreaSerializer, AreaListSerializer, AreaDetailSerializer, PostcodeSerializer, TimeSlotSerializer, TimeSlotToggleSerializer )
 
 # ============= AREA VIEWS =============
 
@@ -35,16 +31,22 @@ class AreaListCreateView(APIView):
         responses={201: AreaSerializer()}
     )
     def post(self, request):
-        """Create a new area"""
+        """Create a new area with default time slots (inactive)"""
         serializer = AreaSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response({
-                'message': 'Area created successfully.',
-                'area': serializer.data
-            }, status=status.HTTP_201_CREATED)
+            try:
+                area = serializer.save()
+                slots_count = area.time_slots.count()
+                return Response({
+                    'message': f'Area created successfully with {slots_count} time slots (all inactive).',
+                    'area': serializer.data,
+                    'time_slots_created': slots_count
+                }, status=status.HTTP_201_CREATED)
+            except IntegrityError:
+                return Response({
+                    'error': 'An area with this name already exists.'
+                }, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class AreaDetailView(APIView):
     """Retrieve, update or delete an area"""
@@ -55,7 +57,7 @@ class AreaDetailView(APIView):
         responses={200: AreaDetailSerializer()}
     )
     def get(self, request, pk):
-        """Get area details with all associated postcodes"""
+        """Get area details with all associated postcodes and time slots"""
         area = get_object_or_404(Area, pk=pk)
         serializer = AreaDetailSerializer(area)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -70,11 +72,16 @@ class AreaDetailView(APIView):
         area = get_object_or_404(Area, pk=pk)
         serializer = AreaSerializer(area, data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response({
-                'message': 'Area updated successfully.',
-                'area': serializer.data
-            }, status=status.HTTP_200_OK)
+            try:
+                serializer.save()
+                return Response({
+                    'message': 'Area updated successfully.',
+                    'area': serializer.data
+                }, status=status.HTTP_200_OK)
+            except IntegrityError:
+                return Response({
+                    'error': 'An area with this name already exists.'
+                }, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @swagger_auto_schema(
@@ -87,11 +94,16 @@ class AreaDetailView(APIView):
         area = get_object_or_404(Area, pk=pk)
         serializer = AreaSerializer(area, data=request.data, partial=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response({
-                'message': 'Area updated successfully.',
-                'area': serializer.data
-            }, status=status.HTTP_200_OK)
+            try:
+                serializer.save()
+                return Response({
+                    'message': 'Area updated successfully.',
+                    'area': serializer.data
+                }, status=status.HTTP_200_OK)
+            except IntegrityError:
+                return Response({
+                    'error': 'An area with this name already exists.'
+                }, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @swagger_auto_schema(
@@ -101,11 +113,17 @@ class AreaDetailView(APIView):
     def delete(self, request, pk):
         """Delete an area"""
         area = get_object_or_404(Area, pk=pk)
+        
+        # Check if area has associated postcodes
+        if area.postcodes.exists():
+            return Response({
+                'error': f'Cannot delete area. It has {area.postcodes.count()} associated postcode(s). Please delete or reassign them first.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         area.delete()
         return Response({
             'message': 'Area deleted successfully.'
         }, status=status.HTTP_204_NO_CONTENT)
-
 
 # ============= POSTCODE VIEWS =============
 
@@ -146,13 +164,17 @@ class PostcodeListCreateView(APIView):
         """Create a new postcode"""
         serializer = PostcodeSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response({
-                'message': 'Postcode created successfully.',
-                'postcode': serializer.data
-            }, status=status.HTTP_201_CREATED)
+            try:
+                serializer.save()
+                return Response({
+                    'message': 'Postcode created successfully.',
+                    'postcode': serializer.data
+                }, status=status.HTTP_201_CREATED)
+            except IntegrityError:
+                return Response({
+                    'error': 'A postcode with this value already exists.'
+                }, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class PostcodeDetailView(APIView):
     """Retrieve, update or delete a postcode"""
@@ -178,11 +200,16 @@ class PostcodeDetailView(APIView):
         postcode = get_object_or_404(Postcode, pk=pk)
         serializer = PostcodeSerializer(postcode, data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response({
-                'message': 'Postcode updated successfully.',
-                'postcode': serializer.data
-            }, status=status.HTTP_200_OK)
+            try:
+                serializer.save()
+                return Response({
+                    'message': 'Postcode updated successfully.',
+                    'postcode': serializer.data
+                }, status=status.HTTP_200_OK)
+            except IntegrityError:
+                return Response({
+                    'error': 'A postcode with this value already exists.'
+                }, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @swagger_auto_schema(
@@ -195,11 +222,16 @@ class PostcodeDetailView(APIView):
         postcode = get_object_or_404(Postcode, pk=pk)
         serializer = PostcodeSerializer(postcode, data=request.data, partial=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response({
-                'message': 'Postcode updated successfully.',
-                'postcode': serializer.data
-            }, status=status.HTTP_200_OK)
+            try:
+                serializer.save()
+                return Response({
+                    'message': 'Postcode updated successfully.',
+                    'postcode': serializer.data
+                }, status=status.HTTP_200_OK)
+            except IntegrityError:
+                return Response({
+                    'error': 'A postcode with this value already exists.'
+                }, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @swagger_auto_schema(
@@ -213,25 +245,19 @@ class PostcodeDetailView(APIView):
         return Response({
             'message': 'Postcode deleted successfully.'
         }, status=status.HTTP_204_NO_CONTENT)
-    
-class TimeSlotListCreateView(APIView):
-    """List all time slots or create a new time slot"""
+
+class AreaTimeSlotListView(APIView):
+    """List all time slots for a specific area"""
     permission_classes = [IsAuthenticated]
     
     @swagger_auto_schema(
         tags=["Time Slots"],
         manual_parameters=[
             openapi.Parameter(
-                'area',
+                'day',
                 openapi.IN_QUERY,
-                description="Filter time slots by area ID",
+                description="Filter by day of week (0=Monday, 6=Sunday)",
                 type=openapi.TYPE_INTEGER
-            ),
-            openapi.Parameter(
-                'day_of_week',
-                openapi.IN_QUERY,
-                description="Filter time slots by day of week",
-                type=openapi.TYPE_STRING
             ),
             openapi.Parameter(
                 'is_active',
@@ -242,144 +268,105 @@ class TimeSlotListCreateView(APIView):
         ],
         responses={200: TimeSlotSerializer(many=True)}
     )
-    def get(self, request):
-        """Get all time slots with optional filters"""
-        queryset = TimeSlot.objects.all()
+    def get(self, request, area_pk):
+        """Get all time slots for an area with optional filters"""
+        area = get_object_or_404(Area, pk=area_pk)
+        time_slots = area.time_slots.all()
         
-        # Apply filters
-        area_id = request.query_params.get('area')
-        day_of_week = request.query_params.get('day_of_week')
+        # Filter by day if provided
+        day = request.query_params.get('day')
+        if day is not None:
+            try:
+                day = int(day)
+                if 0 <= day <= 6:
+                    time_slots = time_slots.filter(day_of_week=day)
+            except ValueError:
+                pass
+        
+        # Filter by active status if provided
         is_active = request.query_params.get('is_active')
-        
-        if area_id:
-            queryset = queryset.filter(area_id=area_id)
-        if day_of_week:
-            queryset = queryset.filter(day_of_week=day_of_week)
         if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+            is_active_bool = is_active.lower() in ['true', '1', 'yes']
+            time_slots = time_slots.filter(is_active=is_active_bool)
         
-        serializer = TimeSlotSerializer(queryset, many=True)
+        serializer = TimeSlotSerializer(time_slots, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
-    @swagger_auto_schema(
-        tags=["Time Slots"],
-        request_body=TimeSlotSerializer,
-        responses={201: TimeSlotSerializer()}
-    )
-    def post(self, request):
-        """Create a new time slot"""
-        serializer = TimeSlotSerializer(data=request.data)
-        if serializer.is_valid():
-            try:
-                serializer.save()
-                return Response({
-                    'message': 'Time slot created successfully.',
-                    'time_slot': serializer.data
-                }, status=status.HTTP_201_CREATED)
-            except IntegrityError:
-                return Response({
-                    'error': 'This time slot already exists for the selected area and day.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-class TimeSlotBulkCreateView(APIView):
-    """Create multiple time slots at once"""
+class TimeSlotToggleView(APIView):
+    """Toggle active status of a specific time slot"""
     permission_classes = [IsAuthenticated]
     
     @swagger_auto_schema(
         tags=["Time Slots"],
-        request_body=TimeSlotBulkCreateSerializer,
-        responses={201: 'Time slots created successfully'}
+        request_body=TimeSlotToggleSerializer,
+        responses={
+            200: openapi.Response(
+                description="Time slot status updated",
+                schema=TimeSlotSerializer()
+            )
+        }
     )
-    def post(self, request):
-        """Create multiple time slots for specific days"""
-        serializer = TimeSlotBulkCreateSerializer(data=request.data)
+    def patch(self, request, area_pk, slot_pk):
+        """Toggle or set the active status of a time slot"""
+        area = get_object_or_404(Area, pk=area_pk)
+        time_slot = get_object_or_404(TimeSlot, pk=slot_pk, area=area)
+        
+        serializer = TimeSlotToggleSerializer(data=request.data)
         if serializer.is_valid():
-            result = serializer.save()
-            created_count = len(result['created'])
-            skipped_count = len(result['skipped'])
+            time_slot.is_active = serializer.validated_data['is_active']
+            time_slot.save()
             
-            response_data = {
-                'message': f'Successfully created {created_count} time slot(s).',
-                'created_count': created_count,
-                'skipped_count': skipped_count,
-            }
-            
-            if result['skipped']:
-                response_data['skipped'] = result['skipped']
-                response_data['message'] += f' {skipped_count} slot(s) were skipped (already exist).'
-            
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            response_serializer = TimeSlotSerializer(time_slot)
+            return Response({
+                'message': f'Time slot {"activated" if time_slot.is_active else "deactivated"} successfully.',
+                'time_slot': response_serializer.data
+            }, status=status.HTTP_200_OK)
+        
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-class TimeSlotDetailView(APIView):
-    """Retrieve, update or delete a time slot"""
+class DayTimeSlotsBulkToggleView(APIView):
+    """Activate or deactivate all time slots for a specific day"""
     permission_classes = [IsAuthenticated]
     
     @swagger_auto_schema(
         tags=["Time Slots"],
-        responses={200: TimeSlotSerializer()}
+        request_body=TimeSlotToggleSerializer,
+        responses={
+            200: openapi.Response(
+                description="All time slots for the day updated",
+                examples={
+                    'application/json': {
+                        'message': 'All time slots for Monday activated successfully.',
+                        'updated_count': 4
+                    }
+                }
+            )
+        }
     )
-    def get(self, request, pk):
-        """Get time slot details"""
-        time_slot = get_object_or_404(TimeSlot, pk=pk)
-        serializer = TimeSlotSerializer(time_slot)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-    @swagger_auto_schema(
-        tags=["Time Slots"],
-        request_body=TimeSlotSerializer,
-        responses={200: TimeSlotSerializer()}
-    )
-    def put(self, request, pk):
-        """Update a time slot"""
-        time_slot = get_object_or_404(TimeSlot, pk=pk)
-        serializer = TimeSlotSerializer(time_slot, data=request.data)
+    def patch(self, request, area_pk, day):
+        """Activate or deactivate all time slots for a specific day"""
+        area = get_object_or_404(Area, pk=area_pk)
+        
+        # Validate day
+        if not (0 <= day <= 6):
+            return Response({
+                'error': 'Invalid day. Must be between 0 (Monday) and 6 (Sunday).'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = TimeSlotToggleSerializer(data=request.data)
         if serializer.is_valid():
-            try:
-                serializer.save()
-                return Response({
-                    'message': 'Time slot updated successfully.',
-                    'time_slot': serializer.data
-                }, status=status.HTTP_200_OK)
-            except IntegrityError:
-                return Response({
-                    'error': 'This time slot already exists for the selected area and day.'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            is_active = serializer.validated_data['is_active']
+            
+            # Update all time slots for this day
+            time_slots = TimeSlot.objects.filter(area=area, day_of_week=day)
+            updated_count = time_slots.update(is_active=is_active)
+            
+            day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            day_name = day_names[day]
+            
+            return Response({
+                'message': f'All time slots for {day_name} {"activated" if is_active else "deactivated"} successfully.',
+                'updated_count': updated_count
+            }, status=status.HTTP_200_OK)
+        
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @swagger_auto_schema(
-        tags=["Time Slots"],
-        request_body=TimeSlotSerializer,
-        responses={200: TimeSlotSerializer()}
-    )
-    def patch(self, request, pk):
-        """Partially update a time slot"""
-        time_slot = get_object_or_404(TimeSlot, pk=pk)
-        serializer = TimeSlotSerializer(time_slot, data=request.data, partial=True)
-        if serializer.is_valid():
-            try:
-                serializer.save()
-                return Response({
-                    'message': 'Time slot updated successfully.',
-                    'time_slot': serializer.data
-                }, status=status.HTTP_200_OK)
-            except IntegrityError:
-                return Response({
-                    'error': 'This time slot already exists for the selected area and day.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @swagger_auto_schema(
-        tags=["Time Slots"],
-        responses={204: 'Time slot deleted successfully'}
-    )
-    def delete(self, request, pk):
-        """Delete a time slot"""
-        time_slot = get_object_or_404(TimeSlot, pk=pk)
-        time_slot.delete()
-        return Response({
-            'message': 'Time slot deleted successfully.'
-        }, status=status.HTTP_204_NO_CONTENT)
